@@ -1,5 +1,6 @@
 import cv2
 import os
+import time
 from capture import Camera
 from detection import Detector
 from analysis import Analysis
@@ -58,7 +59,8 @@ def main():
             alt.trigger_visual_alert(frame, violations)
             if is_alarm:
                 alt.trigger_sound_alert()
-                alt.play_video_alert() # Se reproduce el video cuando se confirma la trampa
+                alt.play_video_alert() # Se reproduce el video por 5 segundos
+                ana.last_clean_time = time.time() # Reiniciar el cronómetro para que pueda volver a sonar
 
         cv2.imshow("Monitor de Examen - Vision Clasica", frame)
 
