@@ -1,6 +1,7 @@
 import cv2
 import platform
 import os
+import time
 
 # Importar winsound solo si estamos en Windows
 if platform.system() == "Windows":
@@ -9,6 +10,7 @@ if platform.system() == "Windows":
 class Alerter:
     def __init__(self):
         self.os_type = platform.system()
+        self.video_path = os.path.join("data", "videos", "alerta.mp4")
 
     def trigger_visual_alert(self, frame, violations):
         # Marco rojo en el borde del frame
@@ -21,19 +23,34 @@ class Alerter:
             y_offset += 40
 
     def trigger_sound_alert(self):
-        """
-        Ejecuta la alarma sonora dependiendo del sistema operativo.
-        """
         if self.os_type == "Windows":
-            # Pitido estándar de Windows
             winsound.Beep(1000, 500)
         elif self.os_type == "Linux":
-            # Sonido de campana de sistema (PC Speaker)
-            # En terminales Linux, esto genera un 'beep'
             print("\a", end='', flush=True)
-        elif self.os_type == "Darwin": # macOS
-            # Usa el sintetizador de voz integrado de Mac
+        elif self.os_type == "Darwin":
             os.system('say "Alerta"')
-        else:
-            # Fallback para otros sistemas
-            print("\007", end='', flush=True)
+
+    def play_video_alert(self):
+        """
+        Reproduce el video de alerta en una ventana independiente.
+        """
+        if not os.path.exists(self.video_path):
+            print(f"Aviso: No se encontro el video en {self.video_path}")
+            return
+
+        cap_video = cv2.VideoCapture(self.video_path)
+        cv2.namedWindow("ALERTA DE SEGURIDAD", cv2.WINDOW_NORMAL)
+        cv2.setWindowProperty("ALERTA DE SEGURIDAD", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+        while cap_video.isOpened():
+            ret, vframe = cap_video.read()
+            if not ret:
+                break
+            
+            cv2.imshow("ALERTA DE SEGURIDAD", vframe)
+            # Reproducir a velocidad normal (aprox 30fps)
+            if cv2.waitKey(25) & 0xFF == ord('q'):
+                break
+        
+        cap_video.release()
+        cv2.destroyWindow("ALERTA DE SEGURIDAD")

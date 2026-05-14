@@ -58,6 +58,7 @@ def main():
             alt.trigger_visual_alert(frame, violations)
             if is_alarm:
                 alt.trigger_sound_alert()
+                alt.play_video_alert() # Se reproduce el video cuando se confirma la trampa
 
         cv2.imshow("Monitor de Examen - Vision Clasica", frame)
 
