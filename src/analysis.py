@@ -2,7 +2,7 @@ import time
 from collections import deque
 
 class Analysis:
-    def __init__(self, violation_threshold_seconds=2.5):
+    def __init__(self, violation_threshold_seconds=1.0):  # era 2.5
         self.threshold = violation_threshold_seconds
         self.last_clean_time = time.time()
         self.is_violating = False

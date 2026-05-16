@@ -10,11 +10,11 @@ class Detector:
 
         self._gaze_off_since          = None
         self._last_blink_time         = None
-        self._blink_tolerance_sec     = 0.35   # reducido: parpadeos reales son ~150ms
-        self._suspicious_threshold_sec = 2.0   # más sensible (era 2.5)
+        self._blink_tolerance_sec      = 0.25   # parpadeo real ~150ms, margen mínimo
+        self._suspicious_threshold_sec = 1.0   # dispara strike tras 1s sostenida (era 2.0)
 
-        # Buffer de historial para suavizar detecciones ruidosas
-        self._gaze_history = deque(maxlen=8)   # últimas 8 frames
+        # Buffer más corto = reacciona más rápido
+        self._gaze_history = deque(maxlen=4)   # era 8
 
     def detect_face(self, gray_frame):
         # scaleFactor más bajo = más detecciones pero más lento; 1.1 es mejor balance
