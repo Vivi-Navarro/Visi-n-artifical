@@ -1,17 +1,3 @@
-"""
-Módulo de detección facial, ocular y de pupila.
-
-El pipeline secundario de detección de pupila (_pupil_gazetracking_style)
-está adaptado de:
-    antoinelame/GazeTracking  —  https://github.com/antoinelame/GazeTracking
-    Licencia: MIT (Copyright (c) 2019 Antoine Lamé)
-
-Adaptación: en el repo original se usa dlib (modelo pre-entrenado de 68
-landmarks faciales). Aquí solo se reusa el algoritmo de pupila puramente
-clásico (bilateralFilter + erosión + threshold + contornos), no la parte
-de landmarks. Se mantiene la restricción del README: sin ML, sin MediaPipe,
-sin modelos pre-entrenados modernos.
-"""
 
 import cv2
 import numpy as np
@@ -25,7 +11,7 @@ class Detector:
 
         self._gaze_off_since           = None
         self._last_blink_time          = None
-        self._blink_tolerance_sec      = 0.25
+        self._blink_tolerance_sec      = 7.9
         self._suspicious_threshold_sec = 0.6   # antes 1.0 — más reactivo
 
         self._gaze_history = deque(maxlen=6)   # historial un poco más largo
