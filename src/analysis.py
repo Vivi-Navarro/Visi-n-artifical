@@ -2,85 +2,71 @@ import time
 from collections import deque
 
 class Analysis:
-    def __init__(self, violation_threshold_seconds=1.0):  # era 2.5
+    def __init__(self, violation_threshold_seconds=1.0, consecutive_frames=4):
         self.threshold = violation_threshold_seconds
         self.last_clean_time = time.time()
         self.is_violating = False
 
-        # Historial de ausencia de rostro para evitar falsos positivos por frames perdidos
-        self._face_absence_history = deque(maxlen=6)   # ventana de 6 frames
-        self._face_absence_threshold = 0.65            # 65% de frames sin cara = alerta
+        # Suavizado de ausencia de rostro
+        self._face_absence_history = deque(maxlen=8)
+        self._face_absence_threshold = 0.70  # 70% de frames sin rostro = ausencia
+
+        # Confirmación temporal: cuántos frames consecutivos con violación se requieren
+        # antes de aceptarla como real (anti-glitch de Haar Cascade)
+        self._consecutive_required = consecutive_frames
+        self._consecutive_violating = 0
 
     def evaluate(self, faces, eyes, pupil_centers, frame_shape):
+        """Detecta infracciones que NO dependen de dirección de mirada
+        (eso lo hace Detector.should_trigger_strike con baseline calibrado).
+        Aquí: ausencia, salida parcial, giro de cabeza, ojos no detectados."""
         violations = []
         h, w = frame_shape[:2]
 
-        # ── 1. Ausencia del rostro (con suavizado para evitar falsos por frames perdidos) ──
+        # ── 1. Ausencia del rostro (con suavizado) ──
         face_present = len(faces) > 0
         self._face_absence_history.append(0 if face_present else 1)
-
         history = list(self._face_absence_history)
         absence_ratio = sum(history) / len(history) if history else 0.0
-
         if absence_ratio >= self._face_absence_threshold:
             violations.append("AUSENCIA DE ROSTRO")
 
         for (x, y, fw, fh) in faces:
-
             # ── 2. Salida parcial del rostro ──
-            margin = int(min(w, h) * 0.04)   # margen relativo al tamaño del frame
+            margin = int(min(w, h) * 0.04)
             if x < margin or y < margin or (x + fw) > (w - margin) or (y + fh) > (h - margin):
                 violations.append("ROSTRO PARCIALMENTE FUERA")
 
-            # ── 3. Giro de cabeza: heurística mejorada ──
-            # El aspect ratio SOLO es útil combinado con el tamaño relativo al frame.
-            # Un rostro de perfil es mucho más angosto relativo a su altura.
-            aspect_ratio = fh / fw if fw > 0 else 1.0
+            # ── 3. Giro de cabeza excesivo ──
+            aspect_ratio    = fh / fw if fw > 0 else 1.0
             face_area_ratio = (fw * fh) / (w * h)
-
-            # Si la cara es pequeña en el frame, probablemente está lejos o de lado
-            # Aspect ratio < 0.75: cara muy estrecha (perfil)
-            # Aspect ratio > 1.7: cara muy alta y estrecha (también perfil o cabeza inclinada)
             if aspect_ratio < 0.75 or aspect_ratio > 1.7:
                 violations.append("GIRO DE CABEZA EXCESIVO")
-
-            # Si el área del rostro cayó drásticamente (se alejó o giró), también es sospechoso
             if face_area_ratio < 0.02:
                 violations.append("ROSTRO MUY PEQUEÑO / ALEJADO")
 
-            # ── 4. Ausencia de ojos detectados en un rostro presente ──
-            # Si hay cara pero no se detectan ojos, suele significar que está mirando abajo
-            # (leyendo apuntes) o de lado.
-            if len(eyes) == 0 and len(faces) > 0:
-                violations.append("OJOS NO DETECTADOS (POSIBLE MIRADA ABAJO)")
+            # ── 4. Ojos no detectados con rostro presente ──
+            # (mirada hacia abajo / cabeza inclinada / ojos cerrados sostenidos)
+            if len(eyes) == 0:
+                violations.append("OJOS NO DETECTADOS")
 
-        # ── 5. Dirección de la mirada / pupilas desviadas ──
-        if len(eyes) > 0 and pupil_centers:
-            for i, (px, py) in enumerate(pupil_centers):
-                if i < len(eyes):
-                    ex, ey, ew, eh = eyes[i]
-                    if ew == 0:
-                        continue
-                    rel_x = px / ew
-                    rel_y = py / eh if eh > 0 else 0.5
-
-                    # Horizontal: mirada lateral
-                    if rel_x < 0.33 or rel_x > 0.67:
-                        violations.append("MIRADA FUERA DE PANTALLA")
-                    # Vertical: mirada abajo (leer apuntes)
-                    elif rel_y > 0.68:
-                        violations.append("MIRADA HACIA ABAJO")
-
-        # ── Evaluación temporal ──
+        # ── Evaluación temporal con confirmación de frames consecutivos ──
         if not violations:
             self.last_clean_time = time.time()
             self.is_violating = False
+            self._consecutive_violating = 0
             return False, []
-        else:
-            current_violation_duration = time.time() - self.last_clean_time
-            if current_violation_duration > self.threshold:
-                self.is_violating = True
-                # Deduplicar violaciones
-                unique_violations = list(dict.fromkeys(violations))
-                return True, unique_violations
-            return False, list(dict.fromkeys(violations))
+
+        # Hay violaciones: incrementar contador de frames consecutivos
+        self._consecutive_violating += 1
+        unique_violations = list(dict.fromkeys(violations))
+
+        # Aceptar como violación real solo si pasó el threshold de tiempo
+        # Y se sostuvo N frames consecutivos
+        current_duration = time.time() - self.last_clean_time
+        if (current_duration > self.threshold and
+            self._consecutive_violating >= self._consecutive_required):
+            self.is_violating = True
+            return True, unique_violations
+
+        return False, unique_violations
