@@ -60,7 +60,7 @@ Al iniciar, el sistema entra en modo calibración con un countdown visible. El u
 ### Fase 2 — Monitoreo
 Cada frame:
 1. Se detecta el rostro y los ojos con Haar Cascades.
-2. La posición de la pupila se obtiene con una cascada de 3 métodos: HoughCircles → pipeline estilo GazeTracking (bilateralFilter + erosión + threshold + contornos) → contornos adaptativos como fallback.
+2. La posición de la pupila se obtiene con una cascada de 3 métodos: HoughCircles → bilateralFilter + erosión + threshold + contornos → contornos adaptativos como fallback.
 3. La pupila se suaviza temporalmente con EMA y persistencia de 0.2 s.
 4. Se compara la posición actual contra el baseline calibrado.
 5. Si el usuario se desvía más allá de la tolerancia (~0.13) por más de 0.6 segundos, se dispara un strike.
@@ -74,10 +74,3 @@ Cada frame:
 | `d`   | Toggle del overlay de debug (muestra dirección, confianza, violación, tiempo) |
 | `r`   | Recalibrar en caliente (vuelve a la fase 1 sin reiniciar) |
 
-## Atribuciones
-
-El pipeline secundario de detección de pupila (`_pupil_gazetracking_style` en `src/detection.py`) está adaptado de:
-
-- **[antoinelame/GazeTracking](https://github.com/antoinelame/GazeTracking)** — Licencia MIT, Copyright © 2019 Antoine Lamé.
-
-Se reutiliza únicamente el algoritmo puramente clásico de pupila (`bilateralFilter` + `erode` + `threshold` + `findContours`), sin la dependencia de dlib ni de los landmarks pre-entrenados que el repo original usa. La adaptación mantiene las restricciones técnicas listadas arriba.
