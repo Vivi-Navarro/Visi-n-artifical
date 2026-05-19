@@ -16,9 +16,8 @@ try:
 except Exception:
     pass
 
-# ============================
 # CONFIGURACIÓN GENERAL
-# ============================
+
 LIMITE_OPORTUNIDADES = 5       # Strikes máximos antes de cerrar el examen
 DEBUG_MODE           = True    # Mostrar info de debug (se puede cambiar con 'd')
 STRIKE_COOLDOWN_SEC  = 3.0     # Segundos mínimos entre cada strike
@@ -70,9 +69,11 @@ def draw_debug_overlay(frame, gaze, violations, elapsed_violation, calibrated):
     h, w = frame.shape[:2]
     direction  = gaze.get('direction', '?') if gaze else '?'
     confidence = gaze.get('confidence', 0.0) if gaze else 0.0
+    is_extreme = gaze.get('is_extreme', False) if gaze else False
     viol_short = violations[0][:24] if violations else "ok"
     cal_tag    = "CAL" if calibrated else "NO-CAL"
-    line = f"{cal_tag} | gaze:{direction} {confidence:.2f} | {viol_short} | {elapsed_violation:.1f}s"
+    ext_tag    = " EXTREMA" if is_extreme else ""
+    line = f"{cal_tag} | gaze:{direction}{ext_tag} {confidence:.2f} | {viol_short} | {elapsed_violation:.1f}s"
     # Fondo semitransparente para que se lea bien
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, h - 28), (w, h), (0, 0, 0), -1)
@@ -114,15 +115,7 @@ def draw_calibration_overlay(frame, seconds_left, face_detected, samples_count):
                 (w // 2 - 70, h // 2 + 140),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (180, 180, 180), 1)
 
-def draw_gaze_indicator(frame, direction):
-    # Muestra un texto arriba indicando hacia dónde estás mirando
-    if direction in (None, 'center', 'unknown'):
-        return
-    h, w = frame.shape[:2]
-    label = direction.upper()
-    cv2.putText(frame, f"<< MIRADA: {label} >>",
-                (w // 2 - 180, 40),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 200, 255), 2)
+
 
 def show_no_face_warning(frame):
     # Aviso discreto cuando no detecta tu cara
@@ -268,7 +261,7 @@ def main():
             show_no_face_warning(proc)
 
         # Dibujamos los indicadores en pantalla
-        draw_gaze_indicator(proc, gaze.get('direction') if gaze else None)
+
         draw_debug_overlay(proc, gaze, violations, elapsed_violation, det.is_calibrated())
         draw_strikes(proc, strikes)
 

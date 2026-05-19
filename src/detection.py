@@ -18,9 +18,11 @@ class Detector:
         self._gaze_off_since           = None
         self._last_blink_time          = None
         # Tolerancia para parpadeos (no contar como trampa si parpadeas)
-        self._blink_tolerance_sec      = 7.9
+        self._blink_tolerance_sec      = 1.0
         # Cuántos segundos mirando fuera para que cuente como sospechoso
         self._suspicious_threshold_sec = 0.6
+        # Umbral más corto cuando la mirada es extrema (ojos muy al lado)
+        self._extreme_threshold_sec    = 0.3
 
         # Historial de las últimas 6 direcciones de mirada
         self._gaze_history = deque(maxlen=6)
@@ -45,6 +47,8 @@ class Detector:
 
         # Qué tan lejos puede estar la pupila del centro antes de ser sospechoso
         self._gaze_tolerance = 0.13
+        # Qué tan lejos es "exagerado" (ojos MUY a un lado sin mover la cara)
+        self._extreme_gaze_tolerance = 0.28
 
     # ============================
     # DETECCIÓN DE CARA
@@ -133,9 +137,9 @@ class Detector:
                 smoothed.append(sm)
         return smoothed
 
-    # ============================
+
     # DETECCIÓN DE PUPILA
-    # ============================
+
     # Usa 3 métodos, uno tras otro, hasta que alguno funcione:
     # 1. HoughCircles (busca círculos)
     # 2. Pipeline estilo GazeTracking (filtros + contornos)
@@ -364,9 +368,8 @@ class Detector:
             best = min(candidates, key=lambda c: c[2])
         return (best[0], best[1])
 
-    # ============================
     # SUAVIZADO DE PUPILA
-    # ============================
+
     def smooth_pupil(self, pupil, eye_index, eye_roi_shape):
         # Suaviza la posición de la pupila para que no tiemble
         # Si se movió poquito -> promediamos (anti-temblor)
@@ -488,12 +491,13 @@ class Detector:
     def get_gaze_direction(self, pupil_center, eye_roi_shape, eye_index=0):
         # Calcula hacia dónde está mirando el usuario
         # Compara la posición actual de la pupila con el baseline
+        # Devuelve (dirección, desviación_máxima) para saber qué tan lejos mira
         if pupil_center is None:
-            return None
+            return None, 0.0
         px, py = pupil_center
         h, w = eye_roi_shape[:2]
         if w == 0 or h == 0:
-            return None
+            return None, 0.0
         # Calculamos la posición como proporción (0 a 1)
         ratio_x = px / w
         ratio_y = py / h
@@ -503,44 +507,53 @@ class Detector:
             base_x, base_y = self._baseline_pupil[eye_index]
             dx = ratio_x - base_x
             dy = ratio_y - base_y
+            # La desviación máxima (qué tan lejos está la pupila del centro)
+            deviation = max(abs(dx), abs(dy))
             tol = self._gaze_tolerance
             if dx < -tol:
-                return "left"
+                return "left", deviation
             elif dx > tol:
-                return "right"
+                return "right", deviation
             elif dy < -tol:
-                return "up"
+                return "up", deviation
             elif dy > tol:
-                return "down"
-            return "center"
+                return "down", deviation
+            return "center", deviation
 
         # Sin calibración: usamos rangos fijos genéricos
         if ratio_x < 0.33:
-            return "left"
+            return "left", abs(ratio_x - 0.5)
         elif ratio_x > 0.67:
-            return "right"
+            return "right", abs(ratio_x - 0.5)
         elif ratio_y < 0.30:
-            return "up"
+            return "up", abs(ratio_y - 0.5)
         elif ratio_y > 0.70:
-            return "down"
-        return "center"
+            return "down", abs(ratio_y - 0.5)
+        return "center", 0.0
 
     def analyze_gaze(self, pupils_and_rois):
         # Analiza la mirada de ambos ojos y da un resultado combinado
         directions = []
+        deviations = []
         for i, (p, s) in enumerate(pupils_and_rois):
-            d = self.get_gaze_direction(p, s, eye_index=i)
+            d, dev = self.get_gaze_direction(p, s, eye_index=i)
             if d is not None:
                 directions.append(d)
+                deviations.append(dev)
 
         if not directions:
-            return {'is_suspicious': False, 'direction': 'unknown', 'confidence': 0.0}
+            return {'is_suspicious': False, 'direction': 'unknown',
+                    'confidence': 0.0, 'is_extreme': False}
+
+        # La desviación máxima entre todos los ojos
+        max_deviation = max(deviations) if deviations else 0.0
 
         # ¿Algún ojo está mirando fuera del centro?
         off_center = [d for d in directions if d != 'center']
         if not off_center:
             self._gaze_history.append('center')
-            return {'is_suspicious': False, 'direction': 'center', 'confidence': 0.0}
+            return {'is_suspicious': False, 'direction': 'center',
+                    'confidence': 0.0, 'is_extreme': False}
 
         # Calculamos la confianza (qué tan seguro estamos)
         confidence = len(off_center) / len(directions)
@@ -548,19 +561,24 @@ class Detector:
         dominant = Counter(off_center).most_common(1)[0][0]
         self._gaze_history.append(dominant)
 
+        # ¿La pupila se movió de forma exagerada? (ojos MUY a un lado)
+        is_extreme = max_deviation >= self._extreme_gaze_tolerance
+
         # Revisamos el historial reciente para suavizar la decisión
         history_list = list(self._gaze_history)
         history_off = [d for d in history_list if d != 'center']
         smoothed_confidence = len(history_off) / len(history_list) if history_list else 0.0
 
         # Es sospechoso si:
+        # - La mirada es extrema (pupila muy lejos del centro)
         # - El historial reciente muestra mucha desviación (>= 40%)
         # - O ambos ojos coinciden en que estás mirando fuera (>= 70%)
-        is_suspicious = smoothed_confidence >= 0.4 or confidence >= 0.7
+        is_suspicious = is_extreme or smoothed_confidence >= 0.4 or confidence >= 0.7
         return {
             'is_suspicious': is_suspicious,
             'direction': dominant,
-            'confidence': smoothed_confidence
+            'confidence': smoothed_confidence,
+            'is_extreme': is_extreme
         }
 
     def should_trigger_strike(self, pupils_and_rois):
@@ -588,7 +606,9 @@ class Detector:
             self._gaze_off_since = now
 
         elapsed = now - self._gaze_off_since
-        if elapsed >= self._suspicious_threshold_sec:
+        # Si la mirada es extrema (ojos MUY al lado), usamos umbral más corto
+        threshold = self._extreme_threshold_sec if gaze.get('is_extreme') else self._suspicious_threshold_sec
+        if elapsed >= threshold:
             # Pasó suficiente tiempo mirando fuera: ¡strike!
             self._gaze_off_since = None
             self._gaze_history.clear()

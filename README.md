@@ -70,10 +70,3 @@ Después de calibrar, el programa empieza a vigilar en tiempo real:
 ├── requirements.txt        ← Las librerías que necesitas instalar
 └── README.md               ← Este archivo que estás leyendo
 ```
-
-## Restricciones del proyecto
-
-Este proyecto se hizo como tarea académica con estas reglas:
-- ❌ Sin Machine Learning / Deep Learning
-- ❌ Sin modelos pre-entrenados modernos (YOLO, MediaPipe, etc.)
-- ✅ Solo OpenCV clásico + Haar Cascades + procesamiento de imágenes
