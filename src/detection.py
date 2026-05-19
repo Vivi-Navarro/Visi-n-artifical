@@ -34,11 +34,11 @@ class Detector:
         # Suavizado de la posición de la pupila (más fuerte porque es más ruidosa)
         self._smoothed_pupils    = [None, None]
         self._last_pupil_time    = [0.0, 0.0]
-        # 30% nuevo + 70% anterior = movimiento suave
-        self._pupil_ema_alpha    = 0.30
-        # Si la pupila se mueve más del 40% del tamaño del ojo, es movimiento real
-        self._pupil_jump_ratio   = 0.40
-        # Mantener la última posición de pupila por 0.2 segundos si falla
+        # 50% nuevo + 50% anterior = responde más rápido al movimiento real
+        self._pupil_ema_alpha    = 0.40
+        # Si la pupila se mueve más del 25% del tamaño del ojo, es movimiento real
+        self._pupil_jump_ratio   = 0.30
+        # Mantener la última posición de pupila por 0.15 segundos si falla
         self._pupil_persist_sec  = 0.20
 
         # Datos de calibración (la posición "normal" de las pupilas)
@@ -46,13 +46,12 @@ class Detector:
         self._calibrated = False
 
         # Qué tan lejos puede estar la pupila del centro antes de ser sospechoso
-        self._gaze_tolerance = 0.13
+        self._gaze_tolerance = 0.10
         # Qué tan lejos es "exagerado" (ojos MUY a un lado sin mover la cara)
-        self._extreme_gaze_tolerance = 0.28
+        self._extreme_gaze_tolerance = 0.20
 
-    # ============================
     # DETECCIÓN DE CARA
-    # ============================
+
     def detect_face(self, gray_frame):
         # Busca caras en la imagen usando Haar Cascade
         return self.face_cascade.detectMultiScale(
@@ -62,9 +61,9 @@ class Detector:
             minSize=(80, 80)
         )
 
-    # ============================
+
     # DETECCIÓN DE OJOS
-    # ============================
+
     def detect_eyes(self, gray_face_roi):
         # Busca ojos dentro de la zona de la cara
         eyes = self.eye_cascade.detectMultiScale(
